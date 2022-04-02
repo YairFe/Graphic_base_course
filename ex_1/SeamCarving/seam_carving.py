@@ -80,9 +80,9 @@ def get_CL_CV_CR(grayscale_image: NDArray):
     down_rotate = np.roll(grayscale_image, shift=1, axis=0)
     first_difference = np.abs(left_rotate - right_rotate)
     # all the values in
-    CV_Matrix[1:-1, 1:-1] = first_difference[1:-1, 1:-1]
-    CL_Matrix[1:-1, 1:-1] = first_difference[1:-1, 1:-1] + np.abs(down_rotate - right_rotate)[1:-1, 1:-1]
-    CR_Matrix[1:-1, 1:-1] = first_difference[1:-1, 1:-1] + np.abs(down_rotate - left_rotate)[1:-1, 1:-1]
+    CV_Matrix[:, 1:-1] = first_difference[:, 1:-1]
+    CL_Matrix[1:, 1:-1] = first_difference[1:, 1:-1] + np.abs(down_rotate - right_rotate)[1:, 1:-1]
+    CR_Matrix[1:, 1:-1] = first_difference[1:, 1:-1] + np.abs(down_rotate - left_rotate)[1:, 1:-1]
 
     return CL_Matrix, CL_Matrix, CR_Matrix
 
