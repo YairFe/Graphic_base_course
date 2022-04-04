@@ -19,42 +19,44 @@ def resize(image: NDArray, out_height: int, out_width: int, forward_implementati
             (where the chosen seams are colored red and black for vertical and horizontal seams, respecitvely).
     """
     all_seam_list = [] # index 0 all column seams to remove, index 1 all row seam to remove
-    work_image = [np.copy(image), np.copy(image)]
+    work_image = [np.copy(image), np.copy(image)] # previous, current
     num_of_seam_to_remove = [image.shape[1] - out_width, image.shape[0] - out_height]
     for dimension in range(2):
-        prev_image = np.copy(work_image[dimension + 1])
-        image_indices = np.indices(work_image[dimension + 1].shape[0:2])
+        image_indices = np.indices(work_image[0].shape[0:2])
         index_array = np.stack((image_indices[0], image_indices[1]), axis=2)
         removed_seams = []
-        grayscale_image = utils.to_grayscale(work_image[dimension + 1])
+        grayscale_image = utils.to_grayscale(work_image[1])
         for i in range(abs(num_of_seam_to_remove[dimension])):
-            E_matrix = utils.get_gradients(work_image[dimension + 1])
+            E_matrix = utils.get_gradients(work_image[1])
             CL, CV, CR = get_CL_CV_CR(grayscale_image)
             M_matrix = calculate_energy(E_matrix, CL, CV, CR, forward_implementation)
             seam_to_remove = calculate_remove_seam(M_matrix, E_matrix, CL, CV, CR, forward_implementation)
-            work_image[dimension + 1] = remove_seam_from_matrix(work_image[dimension + 1],seam_to_remove)
+            work_image[1] = remove_seam_from_matrix(work_image[1],seam_to_remove)
             grayscale_image = remove_seam_from_matrix(grayscale_image,seam_to_remove)
-            removed_seams.append(index_array[np.arange(index_array.shape[0]),seam_to_remove])
+            removed_seams.append(index_array[np.arange(index_array.shape[0]), seam_to_remove])
             index_array = remove_seam_from_matrix(index_array,seam_to_remove)
-        
+        # print(removed_seams)
         all_seam_list.append(removed_seams)
 
-        if (num_of_seam_to_remove[dimension] < 0):
-            work_image[dimension + 1] = prev_image
+        if num_of_seam_to_remove[dimension] < 0:
+            work_image[1] = np.copy(work_image[0])
             for seam in removed_seams:
-                work_image[dimension + 1] = duplicate_seam_in_matrix(work_image[dimension + 1], seam[:,1])
-            
-        work_image.append(np.rot90(work_image[dimension + 1]))
-
-    all_seam_list[0] = np.array(all_seam_list[0]).reshape(abs(num_of_seam_to_remove[0]), work_image[0].shape[0], 2)
-    all_seam_list[1] = np.array(all_seam_list[1]).reshape(abs(num_of_seam_to_remove[1]), work_image[1].shape[1], 2)
-
+                work_image[1] = duplicate_seam_in_matrix(work_image[1], seam[:,1])
+        if dimension == 0:
+            work_image[0] = np.rot90(work_image[1])
+            work_image[1] = np.copy(work_image[0])
+    work_image[0] = np.rot90(work_image[0], -1)
+    work_image[1] = np.rot90(work_image[1], -1)
+    all_seam_list[0] = np.array(all_seam_list[0]).reshape(abs(num_of_seam_to_remove[0]), abs(image.shape[0]), 2)
+    all_seam_list[1] = np.array(all_seam_list[1]).reshape(abs(num_of_seam_to_remove[1]), abs(work_image[0].shape[1]), 2)
+    vertical_image = np.copy(image)
+    horizental_image = np.copy(work_image[0])
     if (all_seam_list[0].size > 0):
-        work_image[0][all_seam_list[0][:,:,0], all_seam_list[0][:,:,1]] = [255, 0, 0]
+        vertical_image[all_seam_list[0][:,:,0], all_seam_list[0][:,:,1]] = [255, 0, 0]
     if (all_seam_list[1].size > 0):
-        work_image[1][all_seam_list[1][:,:,1], all_seam_list[1][:,:,0]] = [0, 0, 255]
+        horizental_image[all_seam_list[1][:,:,1], all_seam_list[1][:,:,0]] = [0, 0, 0]
     
-    return {"resized": np.rot90(work_image[3], 2), "vertical_seams": work_image[0], "horizontal_seams": work_image[1]}
+    return {"resized": work_image[1], "vertical_seams": vertical_image, "horizontal_seams": horizental_image}
     
 
 def duplicate_seam_in_matrix(matrix, seam):
@@ -79,7 +81,6 @@ def calculate_remove_seam(M_matrix, E_matrix, CL, CV, CR, forward_implementation
 
     index = np.argmin(M_matrix[-1])
     seam_to_remove[-1] = index
-
     for line in range(M_matrix.shape[0] - 2, -1, -1):
         # M(i-1,j-1)
         left_value = np.roll(M_matrix[line, :], 1)
@@ -87,18 +88,15 @@ def calculate_remove_seam(M_matrix, E_matrix, CL, CV, CR, forward_implementation
         # M(i-1,j+1)
         right_value = np.roll(M_matrix[line, :], -1)
         right_value[-1] = np.inf
-        
         if forward_implementation:
             left_value += CL[line + 1, :]
             right_value += CR[line + 1, :]
-            
-        if (M_matrix[line + 1][index] == E_matrix[line + 1][index] + left_value[index] and index > 0):
+        if M_matrix[line + 1][index] == E_matrix[line + 1][index] + left_value[index]:
             index -= 1
-        elif (M_matrix[line + 1][index] == E_matrix[line + 1][index] + right_value[index] and index < M_matrix.shape[1] - 1):
+        elif M_matrix[line + 1][index] == E_matrix[line + 1][index] + right_value[index]:
             index += 1
             
         seam_to_remove[line] = index
-
     return seam_to_remove
 
 def calculate_energy(E_matrix: NDArray, CL: NDArray, CV: NDArray, CR: NDArray, forward_implementation: bool):
@@ -115,16 +113,12 @@ def calculate_energy(E_matrix: NDArray, CL: NDArray, CV: NDArray, CR: NDArray, f
         # M(i-1,j+1)
         right_value = np.roll(M_matrix[line-1, :], -1)
         right_value[-1] = np.inf
-        center_value = M_matrix[line-1, :]
+        center_value = np.copy(M_matrix[line-1, :])
         if forward_implementation:
             left_value += CL[line, :]
             right_value += CR[line, :]
             center_value += CV[line, :]
         M_matrix[line, :] = E_matrix[line, :] + np.minimum.reduce([left_value, right_value, center_value])
-        #print(f"left: {left_value[:10]}")
-        #print(f"right: {right_value[:10]}")
-        #print(f"center: {center_value[:10]}")
-        #print(f"minimum: {(M_matrix[line, :] - E_matrix[line, :])[:10]}")
     return M_matrix
 
 def get_CL_CV_CR(grayscale_image: NDArray):
@@ -159,5 +153,4 @@ def remove_seam_from_matrix(matrix: NDArray, seam: list):
     to_copy[np.arange(matrix.shape[0]), seam] = False
 
     res = matrix[to_copy].reshape(res.shape)
-    
     return res
