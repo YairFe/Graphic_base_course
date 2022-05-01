@@ -20,7 +20,6 @@ def main(scene_path, image_name, width, height):
     surface_list = parse_scene(scene_path)
 
 
-
 def parse_scene(scene_path):
     with open(scene_path, 'r') as f:
         file_content = [row.split() for row in f.read().splitlines() if not (row.isspace() or row.startswith('#'))]
@@ -83,6 +82,7 @@ def parse_scene(scene_path):
 if __name__ == '__main__':
     if len(sys.argv) < 3 or len(sys.argv) > 5:
         print(f"Usage: {__name__} full_path_to_scene image_name <width> <height>")
+        exit(1)
     height = 500
     width = 500
     if len(sys.argv) > 4:
