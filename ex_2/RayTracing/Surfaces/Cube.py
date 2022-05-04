@@ -1,9 +1,34 @@
-
+import numpy as np
 
 class Cube:
     def __init__(self, center, edge_length):
         self.edge_length = edge_length
         self.center = center
 
-    def is_intersecting_with_vector(self, vector):
-        raise NotImplemented
+    def intersection_with_vector(self, vector):
+        #returns (t,N) - the minimal t for intersection with the surface and the normal N
+        #or None if there is no intersection
+        minimal_t = np.inf
+        normal = None
+        for dim in range(3):
+            if vector.cross_point[dim] == 0:
+                break
+            for sign in [-1,1]:
+                t = (self.center[dim] - vector.start_point[dim] + sign*self.edge_length/2)\
+                    /vector.cross_point[dim]
+                if t<0:
+                    break
+                P = vector.start_point + t*vector.cross_point
+                if P[0] >= self.center[0] - self.edge_length/2 and\
+                   P[0] <= self.center[0] + self.edge_length/2 and\
+                   P[1] >= self.center[1] - self.edge_length/2 and\
+                   P[1] <= self.center[1] + self.edge_length/2 and\
+                   P[2] >= self.center[2] - self.edge_length/2 and\
+                   P[2] <= self.center[2] + self.edge_length/2 and\
+                   t < minimal_t:
+                        minimal_t = t
+                        normal = np.zeros(3)
+                        normal[dim] = sign
+        if minimal_t == np.inf:
+            return None
+        return minimal_t, normal

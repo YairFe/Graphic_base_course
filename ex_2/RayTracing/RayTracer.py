@@ -1,6 +1,7 @@
 import re
 import sys
 import numpy as np
+from PIL import Image
 
 from ex_2.RayTracing.Camera import Camera
 from ex_2.RayTracing.Light import Light
@@ -18,6 +19,21 @@ def main(scene_path, image_name, width, height):
     material_list,\
     light_list,\
     surface_list = parse_scene(scene_path)
+    img = np.array(Image.new(mode="RGB", size=(width, height)))
+    row_position = camera.position + camera.distance * camera.direction\
+                     + (width/2) * camera.right - (heigth/2) * camera.up_vector
+    for i in range(height):
+        pixel_position = np.copy(row_position)
+        for j in range(width):
+            vector = Vector(
+                start_point = np.copy(camera.position),
+                cross_point = pixel_position-camera.position)
+            P, N = intersect_vactor_with_scene(vector, surface_list)
+            #TO DO: Implement:
+            #img[i,j] = get_color(P, N)
+            pixel_position -= camera.right
+        row_position += camera.up_vector
+    
 
 
 def parse_scene(scene_path):
@@ -77,6 +93,22 @@ def parse_scene(scene_path):
         else:
             raise NotImplemented
         return camera, background_color, num_of_shadow_ray, max_recursion, material_list, light_list, surface_list
+
+
+def intersect_vactor_with_scene(vector, surface_list):
+    #returns (P,N) - the first intersection with the scene,
+    #or None if the vector doesn't intersect any surface
+    min_t = np.inf
+    min_normal = None
+    for surface in surface_list:
+        t,N = surface.intersection_with_vector(vector)
+        if t < min_t:
+            min_t = t
+            min_normal = N
+    if min_t == np.inf:
+        return None
+    P = vector.start_point + min_t * vecto.cross_point
+    return P, min_normal
 
 
 if __name__ == '__main__':
