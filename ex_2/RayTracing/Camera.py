@@ -7,15 +7,15 @@ class Camera:
         self.look_at_point = look_at_point
         self.distance = distance
         self.screen_width = screen_width
-        self.direction = self._get_direction()
-        self.up_vector = self._get_up_vector(up_vector, self.direction)
-        self.right = np.cross(self.up_vector, self.direction)
+        self.direction = self._get_direction(self.position, self.look_at_point)
+        self.right = self._get_right_vector(up_vector, self.direction)
+        self.up_vector = np.cross(self.right, self.direction)
 
     def _get_direction(self, position, look_at_point):
-        temp = position - look_at_point
+        temp = look_at_point - position
         return temp / np.linalg.norm(temp)
 
-    def _get_up_vector(self, up_vector, direction):
+    def _get_right_vector(self, up_vector, direction):
         temp = np.cross(up_vector, direction)
         return temp / np.linalg.norm(temp)
 

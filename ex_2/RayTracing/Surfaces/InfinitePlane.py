@@ -2,7 +2,8 @@ import numpy as np
 
 
 class InfinitePlane:
-    def __init__(self, normal, offset):
+    def __init__(self, normal, offset, material_index):
+        self.material_index = material_index
         self.normal = normal
         self.offset = offset
 
@@ -12,8 +13,5 @@ class InfinitePlane:
         denominator = np.dot(vector.cross_point, self.normal)
         if denominator == 0:
             return None
-        t = (self.offset - np.dot(vector.start_point, self.normal)) / denominator
-        if denominator < 0:
-            return t, np.copy(self.normal)
-        if denominator > 0:
-            return t, -self.normal
+        t = -(self.offset + np.dot(vector.start_point, self.normal)) / denominator
+        return t, self.normal

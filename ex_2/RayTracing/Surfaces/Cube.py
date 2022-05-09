@@ -1,7 +1,8 @@
 import numpy as np
 
 class Cube:
-    def __init__(self, center, edge_length):
+    def __init__(self, center, edge_length, material_index):
+        self.material_index = material_index
         self.edge_length = edge_length
         self.center = center
 
