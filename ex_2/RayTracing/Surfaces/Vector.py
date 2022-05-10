@@ -18,11 +18,14 @@ class Vector:
         # the calculation doesnt work on parallel vectors so in-order to always succeed we test them all
         vectors_list = [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]
         for vector in vectors_list:
-            right_direction = np.cross(self.cross_point, vector)
+            right_direction = np.cross(vector, self.cross_point)
             if np.dot(right_direction, self.cross_point) == 0:
                 break
         right_direction /= np.linalg.norm(right_direction)
         up_direction = np.cross(self.cross_point, right_direction)
+        up_direction /= np.linalg.norm(up_direction)
         return right_direction, up_direction
 
-
+    @staticmethod
+    def normalize_vector(point):
+        return point / np.linalg.norm(point)

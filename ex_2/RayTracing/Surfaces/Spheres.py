@@ -14,9 +14,9 @@ class Sphere:
         if t_ca < 0:
             return None
         d = np.dot(L, L) - t_ca**2
-        if d**2 > self.radius**2:
+        if d > self.radius**2:
             return None
-        t = min(t_ca - (self.radius**2 - d**2)**0.5, t_ca + (self.radius**2 - d**2)**0.5)
+        t = t_ca - (self.radius**2 - d)**0.5
         P = vector.start_point + t*vector.cross_point
         N = (P-self.center) / np.linalg.norm(P-self.center)
         return t, N

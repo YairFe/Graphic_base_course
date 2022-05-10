@@ -33,7 +33,7 @@ class RayTracer:
             for j in range(width):
                 vector = Vector(
                     start_point=np.copy(self.camera.position),
-                    cross_point=pixel_position-self.camera.position)
+                    cross_point=Vector.normalize_vector(pixel_position-self.camera.position))
                 intersection = self.intersect_vector_with_scene(vector)
                 if intersection is not None:
                     # intersection 0 - intersection_point
@@ -44,8 +44,7 @@ class RayTracer:
                     img[i, j] = self.background_color
                 pixel_position += self.camera.right * self.camera.screen_width / width
             row_position += self.camera.up_vector * screen_height / height
-        Image.fromarray(np.round(255*img), mode='RGB').save(image_name)
-
+        Image.fromarray((255*img).astype(np.uint8), mode='RGB').save(image_name)
 
 
     def parse_scene(self, scene_path):
@@ -145,7 +144,7 @@ class RayTracer:
         grid += self._get_random_grid(low=0, high=cell_size)
 
         def is_intersecting_with_surface(start_point):
-            light_ray = Vector(start_point=start_point,cross_point=intersection_point - start_point)
+            light_ray = Vector(start_point=start_point,cross_point=Vector.normalize_vector(intersection_point - start_point))
             intersection_result = self.intersect_vector_with_scene(light_ray)
             if intersection_result is None:
                 return False
@@ -189,9 +188,9 @@ if __name__ == '__main__':
     height = 500
     width = 500
     if len(sys.argv) > 4:
-        height = sys.argv[4]
+        height = int(sys.argv[4])
     if len(sys.argv) > 3:
-        width = sys.argv[3]
+        width = int(sys.argv[3])
     scene_path = sys.argv[1]
     image_name = sys.argv[2]
     RT = RayTracer(scene_path)

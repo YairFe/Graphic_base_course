@@ -14,4 +14,6 @@ class InfinitePlane:
         if denominator == 0:
             return None
         t = -(self.offset + np.dot(vector.start_point, self.normal)) / denominator
+        if t < 0:
+            return None
         return t, self.normal
