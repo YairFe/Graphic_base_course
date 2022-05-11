@@ -116,19 +116,20 @@ class RayTracer:
         surface(Surface): one of the surfaces in surface_list - Cube, Spheres, InfinitePlane
         """
         material = self.material_list[surface.material_index-1]
+        intersection_to_camera = Vector(start_point = intersection_point, cross_point = self.camera.position - intersection_point)
 
         background_color = self.get_background_color()
 
         total_diffuse_specular_color = np.zeros(3)
         for light in self.light_list:
-            ray = Vector(start_point=light.position, cross_point=Vector.normalize_vector(intersection_point - light.position))
+            intersection_to_light = Vector(start_point=light.position, cross_point=Vector.normalize_vector(intersection_point - light.position))
             light_direction = light.get_normalized_light_direction_vector(intersection_point)
             light_reflection_direction = light.get_normalized_light_reflection_direction_vector(intersection_point, normal)
             diffuse_color = np.dot(normal, light_direction) * material.diffuse_color
-            specular_color = (np.dot(light_reflection_direction, self.camera.position - intersection_point) ** material.phong) * material.specular_color * light.specular_intensity
-            light_intensity = self.get_light_intensity(light, intersection_point, ray, surface)
+            specular_color = (np.dot(light_reflection_direction, intersection_to_camera.cross_point) ** material.phong) * material.specular_color * light.specular_intensity
+            light_intensity = self.get_light_intensity(light, intersection_point, intersection_to_light, surface)
             total_diffuse_specular_color += light_intensity * light.color * (diffuse_color + specular_color)
-        return material.transparency * background_color + (1-material.transparency) * total_diffuse_specular_color
+        return np.clip(material.transparency * background_color + (1-material.transparency) * total_diffuse_specular_color, 0, 1)
 
     def get_background_color(self):
         return self.background_color
