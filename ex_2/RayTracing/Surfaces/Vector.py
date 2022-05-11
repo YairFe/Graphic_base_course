@@ -4,7 +4,7 @@ import numpy as np
 class Vector:
     def __init__(self, start_point, cross_point):
         self.start_point = start_point
-        self.cross_point = cross_point
+        self.cross_point = Vector.normalize_vector(cross_point)
 
 
     def get_reflection_direction(self, normal):

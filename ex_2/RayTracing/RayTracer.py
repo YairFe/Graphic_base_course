@@ -25,8 +25,8 @@ class RayTracer:
         screen_height = height * self.camera.screen_width / width
         img = np.array(Image.new(mode="RGB", size=(width, height)), dtype=np.float64)
         row_position = self.camera.position + self.camera.distance * self.camera.direction \
-                       - (self.camera.screen_width/2) * self.camera.right \
-                       - (screen_height/2) * self.camera.up_vector
+                       + (self.camera.screen_width/2) * self.camera.right \
+                       + (screen_height/2) * self.camera.up_vector
         for i in range(height):
             pixel_position = np.copy(row_position)
             print(f"{i=}")
@@ -42,8 +42,8 @@ class RayTracer:
                     img[i, j] = self.get_color(intersection[0], intersection[1], intersection[2])
                 else:
                     img[i, j] = self.background_color
-                pixel_position += self.camera.right * self.camera.screen_width / width
-            row_position += self.camera.up_vector * screen_height / height
+                pixel_position -= self.camera.right * self.camera.screen_width / width
+            row_position -= self.camera.up_vector * screen_height / height
         Image.fromarray((255*img).astype(np.uint8), mode='RGB').save(image_name)
 
 
@@ -88,6 +88,7 @@ class RayTracer:
                     )
                 )
             elif row[0] == 'pln':
+                pass
                 surface_list.append(InfinitePlane(
                     normal=np.array((row[1], row[2], row[3]), dtype=np.float64),
                     offset=float(row[4]), material_index=int(row[5])
@@ -114,17 +115,17 @@ class RayTracer:
         normal(ndArray): direction vector perpendicular to the surface
         surface(Surface): one of the surfaces in surface_list - Cube, Spheres, InfinitePlane
         """
-        ray = Vector(start_point=self.camera.position, cross_point=(intersection_point - self.camera.position))
         material = self.material_list[surface.material_index-1]
 
         background_color = self.get_background_color()
 
         total_diffuse_specular_color = np.zeros(3)
         for light in self.light_list:
+            ray = Vector(start_point=light.position, cross_point=Vector.normalize_vector(intersection_point - light.position))
             light_direction = light.get_normalized_light_direction_vector(intersection_point)
             light_reflection_direction = light.get_normalized_light_reflection_direction_vector(intersection_point, normal)
             diffuse_color = np.dot(normal, light_direction) * material.diffuse_color
-            specular_color = (np.dot(light_reflection_direction, ray.cross_point) ** material.phong) * material.specular_color * light.specular_intensity
+            specular_color = (np.dot(light_reflection_direction, self.camera.position - intersection_point) ** material.phong) * material.specular_color * light.specular_intensity
             light_intensity = self.get_light_intensity(light, intersection_point, ray, surface)
             total_diffuse_specular_color += light_intensity * light.color * (diffuse_color + specular_color)
         return material.transparency * background_color + (1-material.transparency) * total_diffuse_specular_color
