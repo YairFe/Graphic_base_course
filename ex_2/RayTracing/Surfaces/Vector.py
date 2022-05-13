@@ -2,10 +2,14 @@ import numpy as np
 
 
 class Vector:
-    def __init__(self, start_point, cross_point):
+    epsilon = 0.0001
+    
+    def __init__(self, start_point, cross_point, offset=False):
         self.start_point = start_point
         self.cross_point = Vector.normalize_vector(cross_point)
-
+        if offset:
+            self.start_point += Vector.epsilon * self.cross_point
+        
 
     def get_reflection_direction(self, normal):
         return self.cross_point - 2 * np.dot(normal, self.cross_point) * normal

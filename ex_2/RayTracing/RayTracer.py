@@ -145,17 +145,23 @@ class RayTracer:
                np.rot90(np.tile(np.arange(self.num_of_shadow_ray), self.num_of_shadow_ray).reshape((self.num_of_shadow_ray, self.num_of_shadow_ray, 1)), -1) * (up * cell_size)
         grid += self._get_random_grid(low=0, high=cell_size)
 
-        def is_intersecting_with_surface(start_point):
-            light_ray = Vector(start_point=start_point,cross_point=Vector.normalize_vector(intersection_point - start_point))
-            intersection_result = self.intersect_vector_with_scene(light_ray)
-            if intersection_result is None:
-                return False
-            return intersection_result[2] == surface
+        def is_intersecting_with_surface(end_point):
+            light_ray = Vector(start_point=intersection_point,cross_point=end_point-intersection_point, offset=True)
+            return not self.is_intersecting_with_scene(light_ray)
         num_of_intersecting_rays = np.sum(list(map(lambda x: is_intersecting_with_surface(x), grid.reshape((self.num_of_shadow_ray**2, 3)))))
         percentage_of_intersecting_rays = num_of_intersecting_rays / (self.num_of_shadow_ray ** 2)
         return (1 - light.shadow_intensity) + light.shadow_intensity * percentage_of_intersecting_rays
 
 
+    def is_intersecting_with_scene(self, vector):
+        for surface in self.surface_list:
+            if surface.intersection_with_vector(vector) is None:
+                continue
+            else:
+                return True
+        return False
+    
+    
     def intersect_vector_with_scene(self, vector):
         #returns (P,N,minimum_intersecting_surface) - the first intersection with the scene,
         #or None if the vector doesn't intersect any surface
