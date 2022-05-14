@@ -33,3 +33,23 @@ class Cube:
         if minimal_t == np.inf:
             return None
         return minimal_t, normal
+
+
+    def intersection_with_vectors(self, start_points, directions):
+        minimal_t = np.full(start_points.shape[0], np.inf)
+        normals = np.zeros_like(start_points)
+        for dim in range(3):
+            denominators = np.where(directions[:,dim] == 0, np.inf, directions[:,dim])
+            for sign in [-1,1]:
+                t = (self.center[dim] - start_points[:,dim] + sign*self.edge_length/2)/denominators
+                P = start_points + t[:,np.newaxis]*directions
+                is_minimal = (P[:,0] >= self.center[0] - self.edge_length/2) *\
+                             (P[:,0] <= self.center[0] + self.edge_length/2) *\
+                             (P[:,1] >= self.center[1] - self.edge_length/2) *\
+                             (P[:,1] <= self.center[1] + self.edge_length/2) *\
+                             (P[:,2] >= self.center[2] - self.edge_length/2) *\
+                             (P[:,2] <= self.center[2] + self.edge_length/2) *\
+                             (t > 0) == 1
+                minimal_t = np.where(is_minimal, t, minimal_t)
+                normals = np.where(np.repeat(is_minimal, 3).reshape(normals.shape), sign * np.array([dim == i for i in range(3)], dtype=np.float64), normals)
+        return minimal_t, normals

@@ -17,3 +17,10 @@ class InfinitePlane:
         if t < 0:
             return None
         return t, self.normal
+
+    def intersection_with_vectors(self, start_points, directions):
+        denominators = np.sum(directions*self.normal, axis=1)
+        denominators = np.where(denominators == 0, np.inf, denominators)
+        t = (self.offset - np.sum(start_points*self.normal, axis=1)) / denominators
+        N = np.full_like(start_points, self.normal)
+        return t,N

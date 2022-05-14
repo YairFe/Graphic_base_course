@@ -21,4 +21,16 @@ class Sphere:
         N = (P-self.center) / np.linalg.norm(P-self.center)
         return t, N
 
+
+    def intersection_with_vectors(self, start_points, directions):
+        is_in = np.sum((start_points - self.center)**2, axis=1) < self.radius**2
+        
+        L = self.center - start_points
+        t_ca = np.sum(L * directions, axis=1)
+        d = np.sum(L*L, axis=1) - t_ca**2
+        t = np.where(self.radius**2 >= d ,(self.radius**2 - d), np.inf).astype(np.float64)
+        t = np.where(is_in, t_ca + np.sqrt(t), np.where((t < np.inf) * (t_ca >= 0), t_ca - np.sqrt(t), 0))
+        P = start_points + t[:,np.newaxis]*directions
+        N = (P-self.center) / (np.sum((P-self.center)**2, axis=1)**0.5)[:,np.newaxis]
+        return t, N
     
