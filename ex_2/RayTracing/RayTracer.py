@@ -44,7 +44,7 @@ class RayTracer:
         transparency = np.full(intersection[2].shape, 1, dtype=np.float64)
         reflection = np.full(intersection[0].shape, 1, dtype=np.float64)
         img[intersection[3].reshape(start_shape[:-1])] = self.get_color(intersection[0], intersection[1], intersection[2],\
-                                                                        directions, transparency, reflection, self.max_recursion)
+                                                                        directions, transparency, reflection, 0)
         img = img.reshape(start_shape)
         Image.fromarray((255*img).astype(np.uint8), mode='RGB').save(image_name)
 
@@ -109,7 +109,7 @@ class RayTracer:
         return camera, background_color, num_of_shadow_ray, max_recursion, material_list, light_list, surface_list
 
 
-    def get_color(self, intersection_points, normals, surfaces, directions, material_transparencies, material_reflection_colors, num_of_recurtion):
+    def get_color(self, intersection_points, normals, surfaces, directions, material_transparencies, material_reflection_colors, depth):
         """
         calculate the color of a ray at intersection_point with normal provided to the surface from surface_list
         intersection_point(ndArray) : points on surfaces
@@ -129,8 +129,11 @@ class RayTracer:
             material_transparencies[i] *= material.transparency
         intersections_to_camera = self.camera.position - intersection_points
         intersections_to_camera /= (np.sum(intersections_to_camera**2, axis=1)**0.5)[:,np.newaxis] #normalizing
-        background_color = self.get_background_color(intersection_points, directions,\
-                                                     material_transparencies, material_reflection_colors)
+        if depth < self.max_recursion:
+            background_color = self.get_background_color(intersection_points, directions, surfaces,\
+                                                         material_transparencies, material_reflection_colors, depth)
+        else:
+            background_color = np.full_like(intersection_points, self.background_color)
         total_diffuse_specular_colors = np.zeros_like(intersection_points)                                     
         light_intensities = self.get_light_intensities(intersection_points)
         #light_intensities[i,j,k] is the light intensity of light_list[i] at point intersection_point[j,k]
@@ -144,8 +147,11 @@ class RayTracer:
             diffuse_colors = np.sum(normals*light_directions, axis=1)[:,np.newaxis] * material_diffuse_colors
             specular_colors = (np.sum(light_reflection_directions*intersections_to_camera, axis=1) ** material_phong)[:,np.newaxis] * material_specular_colors * light.specular_intensity
             total_diffuse_specular_colors += light_intensities[i,:,np.newaxis] * np.full_like(intersection_points, light.color) * (diffuse_colors + specular_colors)
-        material_reflection_colors = self.get_reflection_color(intersection_points, directions, normals,\
-                                                     material_transparencies, material_reflection_colors, num_of_recurtion)
+        if depth < self.max_recursion:
+            material_reflection_colors = self.get_reflection_color(intersection_points, directions, normals,\
+                                                         material_transparencies, material_reflection_colors, depth)
+        else:
+            material_reflection_colors = np.zeros_like(intersection_points)
         return np.clip(material_reflection_colors + material_transparencies[:,np.newaxis] * background_color + (1-material_transparencies)[:,np.newaxis] * total_diffuse_specular_colors, 0, 1)
 
 
@@ -196,43 +202,33 @@ class RayTracer:
         return grids.reshape((n, intersection_points.shape[0], self.num_of_shadow_ray**2, 3))
 
 
-    def get_reflection_color(self, intersection_points, directions, normals, transparencies, reflections, num_of_recursion):
-        print(f"reflection {num_of_recursion}")
-        if num_of_recursion == 0:
+    def get_reflection_color(self, intersection_points, directions, normals, transparencies, reflections, depth):
+        print(f"reflection {depth}")
+        valid = np.linalg.norm(reflections, axis=1) > 0.01
+        if np.sum(valid) == 0:
             return np.zeros_like(reflections)
-        reflection_direction = directions - 2 * np.sum(normals * directions, axis=1).reshape(
-            (directions.shape[0], 1)) * normals
+        reflection_direction = directions - 2 * np.sum(normals * directions, axis=1).reshape((directions.shape[0],1)) * normals
         starting_point = intersection_points + reflection_direction * RayTracer.epsilon
-        intersection = self.intersect_vectors_with_scene(starting_point, reflection_direction)
-        color_array = self.get_color(intersection[0], intersection[1], intersection[2],
-                                     reflection_direction[intersection[3]], \
-                                     np.copy(transparencies[intersection[3]]),
-                                     np.copy(reflections[intersection[3]]), num_of_recursion - 1)
-        reflections[intersection[3]] *= color_array
+        intersection = self.intersect_vectors_with_scene(starting_point[valid], reflection_direction[valid])
+        color_array = self.get_color(intersection[0], intersection[1], intersection[2], reflection_direction[valid][intersection[3]],\
+                                     transparencies[valid][intersection[3]], reflections[valid][intersection[3]], depth+1)
+        reflections[np.flatnonzero(valid)[intersection[3]]] *= color_array
+        reflections[np.flatnonzero(valid)[np.logical_not(intersection[3])]] *= self.background_color
         return reflections
-        # valid = np.linalg.norm(reflections, axis=1) > 0.01
-        # if np.sum(valid) == 0:
-        #     return np.zeros_like(reflections)
-        # reflection_direction = directions - 2 * np.sum(normals * directions, axis=1).reshape((directions.shape[0],1)) * normals
-        # starting_point = intersection_points + reflection_direction * RayTracer.epsilon
-        # intersection = self.intersect_vectors_with_scene(starting_point[valid], reflection_direction[valid])
-        # color_array = self.get_color(intersection[0], intersection[1], intersection[2], reflection_direction[valid][intersection[3]],\
-        #                              np.copy(transparencies[valid][intersection[3]]), np.copy(reflections[valid][intersection[3]]), num_of_recursion-1)
-        # reflections[valid][intersection[3]] *= color_array
-        # return reflections
-    
-    def get_background_color(self, starting_points, directions, transparencies, reflections):
+
+    def get_background_color(self, starting_points, directions, surfaces, transparencies, reflections, depth):
+        print(f"background {depth}")
         background_color_array = np.full_like(starting_points, self.background_color, dtype=np.float64)
         valid = transparencies > 0.01
         if np.sum(valid) == 0:
             return background_color_array
-        intersection = self.intersect_vectors_with_scene(starting_points[valid], directions[valid])
+        intersection = self.intersect_vectors_with_scene(starting_points[valid], directions[valid], surfaces[valid])
         color_array = self.get_color(intersection[0], intersection[1], intersection[2], directions[valid][intersection[3]],\
-                                     np.copy(transparencies[valid][intersection[3]]), np.copy(reflections[valid][intersection[3]]),0)
-        background_color_array[valid][intersection[3]] = color_array
+                                     np.copy(transparencies[valid][intersection[3]]), np.copy(reflections[valid][intersection[3]]),depth+1)
+        background_color_array[np.flatnonzero(valid)[intersection[3]]] = color_array
         return background_color_array
 
-    def intersect_vectors_with_scene(self, start_points, directions):
+    def intersect_vectors_with_scene(self, start_points, directions, current_surface=None):
         start_points = start_points.ravel().reshape((start_points.size//3, 3))
         directions = directions.ravel().reshape((directions.size//3, 3))
         min_t = np.full(start_points.shape[0], np.inf)
@@ -240,7 +236,7 @@ class RayTracer:
         minimum_intersecting_surface = np.full_like(min_t, None)
         for surface in self.surface_list:
             t,N = surface.intersection_with_vectors(start_points, directions)
-            is_intersecting = (t < min_t) * (t > 0)
+            is_intersecting = (t < min_t) * (t > 0) * ((current_surface is None) + (current_surface != surface))
             min_t = np.where(is_intersecting, t, min_t)
             min_normal = np.where(np.repeat(is_intersecting, 3).reshape(min_normal.shape), N, min_normal)
             minimum_intersecting_surface = np.where(is_intersecting, surface, minimum_intersecting_surface)
