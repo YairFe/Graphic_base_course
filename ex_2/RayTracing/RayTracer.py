@@ -12,7 +12,7 @@ from Surfaces.Vector import Vector
 
 
 class RayTracer:
-    epsilon = 0.000001
+    epsilon = 0.0002
     
     def __init__(self,scene_path):
         self.camera, \
@@ -25,8 +25,9 @@ class RayTracer:
 
     def render(self, image_name, height, width):
         screen_height = height * self.camera.screen_width / width
-        img = np.array(Image.new(mode="RGB", size=(width, height)), dtype=np.float64)
+        img = np.full((width, height, 3), self.background_color, dtype=np.float64)
         start_points = np.zeros((height, width, 3))
+        start_shape = start_points.shape
         row_position = self.camera.position + self.camera.distance * self.camera.direction \
                        + (self.camera.screen_width/2) * self.camera.right \
                        + (screen_height/2) * self.camera.up_vector
@@ -39,7 +40,12 @@ class RayTracer:
         directions = start_points - self.camera.position
         directions /= (np.sum(directions**2, axis=2)**0.5)[:,:,np.newaxis]
         intersection = self.intersect_vectors_with_scene(start_points, directions)
-        img = self.get_color(intersection[0], intersection[1], intersection[2], intersection[3])
+        directions = directions.ravel().reshape((directions.size//3, 3))[intersection[3]]
+        transparency = np.full(intersection[2].shape, 1, dtype=np.float64)
+        reflection = np.full(intersection[0].shape, 1, dtype=np.float64)
+        img[intersection[3].reshape(start_shape[:-1])] = self.get_color(intersection[0], intersection[1], intersection[2],\
+                                                                        directions, transparency, reflection, self.max_recursion)
+        img = img.reshape(start_shape)
         Image.fromarray((255*img).astype(np.uint8), mode='RGB').save(image_name)
 
 
@@ -84,7 +90,6 @@ class RayTracer:
                     )
                 )
             elif row[0] == 'pln':
-                pass
                 surface_list.append(InfinitePlane(
                     normal=np.array((row[1], row[2], row[3]), dtype=np.float64),
                     offset=float(row[4]), material_index=int(row[5])
@@ -104,7 +109,7 @@ class RayTracer:
         return camera, background_color, num_of_shadow_ray, max_recursion, material_list, light_list, surface_list
 
 
-    def get_color(self, intersection_points, normals, surfaces, valid):
+    def get_color(self, intersection_points, normals, surfaces, directions, material_transparencies, material_reflection_colors, num_of_recurtion):
         """
         calculate the color of a ray at intersection_point with normal provided to the surface from surface_list
         intersection_point(ndArray) : points on surfaces
@@ -115,44 +120,44 @@ class RayTracer:
         material_diffuse_colors = np.ones_like(intersection_points)
         material_specular_colors = np.ones_like(intersection_points)
         material_phong = np.zeros_like(surfaces, dtype=np.float64)
-        material_transparencies = np.zeros_like(surfaces, dtype=np.float64)
         for i in range(surfaces.shape[0]):
-            for j in range(surfaces.shape[1]):
-                if valid[i,j]:
-                    material = self.material_list[surfaces[i,j].material_index-1]
-                    material_diffuse_colors[i,j] = material.diffuse_color
-                    material_specular_colors[i,j] = material.specular_color
-                    material_phong[i,j] = material.phong
-                    material_transparencies[i,j] = material.transparency
+            material = self.material_list[surfaces[i].material_index-1]
+            material_diffuse_colors[i] = material.diffuse_color
+            material_specular_colors[i] = material.specular_color
+            material_reflection_colors[i] *= material.reflection_color
+            material_phong[i] = material.phong
+            material_transparencies[i] *= material.transparency
         intersections_to_camera = self.camera.position - intersection_points
-        intersections_to_camera /= (np.sum(intersections_to_camera**2, axis=2)**0.5)[:,:,np.newaxis] #normalizing
-        background_color = self.get_background_color()
+        intersections_to_camera /= (np.sum(intersections_to_camera**2, axis=1)**0.5)[:,np.newaxis] #normalizing
+        background_color = self.get_background_color(intersection_points, directions,\
+                                                     material_transparencies, material_reflection_colors)
         total_diffuse_specular_colors = np.zeros_like(intersection_points)                                     
-        light_intensities = self.get_light_intensities(intersection_points, surfaces)
+        light_intensities = self.get_light_intensities(intersection_points)
         #light_intensities[i,j,k] is the light intensity of light_list[i] at point intersection_point[j,k]
         for i in range(len(self.light_list)):
             light = self.light_list[i]
             light_to_intersections = intersection_points - light.position
-            light_to_intersections /= (np.sum(light_to_intersections**2, axis=2)**0.5)[:,:,np.newaxis] #normalizing
+            light_to_intersections /= (np.sum(light_to_intersections**2, axis=1)**0.5)[:,np.newaxis]#normalizing
             light_directions = -light_to_intersections
-            light_reflection_directions = 2 * np.sum(light_directions*normals, axis=2)[:,:,np.newaxis]*normals - light_directions
-            light_reflection_directions /= (np.sum(light_reflection_directions**2, axis=2)**0.5)[:,:,np.newaxis] #normalizing
-            diffuse_colors = np.sum(normals*light_directions, axis=2)[:,:,np.newaxis] * material_diffuse_colors
-            specular_colors = (np.sum(light_reflection_directions*intersections_to_camera, axis=2) ** material_phong)[:,:,np.newaxis] * material_specular_colors * light.specular_intensity
-            total_diffuse_specular_colors += light_intensities[i, :,:,np.newaxis] * np.full_like(intersection_points, light.color) * (diffuse_colors + specular_colors)
-        total_diffuse_specular_colors = np.where(np.repeat(valid, 3).reshape(intersection_points.shape), total_diffuse_specular_colors, background_color)
-        return np.clip(material_transparencies[:,:,np.newaxis] * np.full_like(intersection_points, background_color) + (1-material_transparencies)[:,:,np.newaxis] * total_diffuse_specular_colors, 0, 1)
+            light_reflection_directions = 2 * np.sum(light_directions*normals, axis=1)[:,np.newaxis]*normals - light_directions
+            light_reflection_directions /= (np.sum(light_reflection_directions**2, axis=1)**0.5)[:,np.newaxis] #normalizing
+            diffuse_colors = np.sum(normals*light_directions, axis=1)[:,np.newaxis] * material_diffuse_colors
+            specular_colors = (np.sum(light_reflection_directions*intersections_to_camera, axis=1) ** material_phong)[:,np.newaxis] * material_specular_colors * light.specular_intensity
+            total_diffuse_specular_colors += light_intensities[i,:,np.newaxis] * np.full_like(intersection_points, light.color) * (diffuse_colors + specular_colors)
+        material_reflection_colors = self.get_reflection_color(intersection_points, directions, normals,\
+                                                     material_transparencies, material_reflection_colors, num_of_recurtion)
+        return np.clip(material_reflection_colors + material_transparencies[:,np.newaxis] * background_color + (1-material_transparencies)[:,np.newaxis] * total_diffuse_specular_colors, 0, 1)
 
 
-    def get_light_intensities(self, intersection_points, surfaces):
+    def get_light_intensities(self, intersection_points):
         grids = self.get_grids(intersection_points)
         points = np.tile(intersection_points, (1,1,self.num_of_shadow_ray ** 2)).reshape((grids[0].shape))
         points = np.array([np.copy(points) for _ in self.light_list])
         directions = grids - points
-        directions /= (np.sum(directions**2, axis = 4)**0.5)[:,:,:,:,np.newaxis]
+        directions /= (np.sum(directions**2, axis = 3)**0.5)[:,:,:,np.newaxis]
         points += RayTracer.epsilon * directions
         intersections = self.intersect_vectors_with_scene(points, directions)
-        num_of_intersecting_rays = np.sum(1 - intersections[3], axis = 3)
+        num_of_intersecting_rays = np.sum(1 - intersections[3].reshape((grids.shape[:-1])), axis=2)
         percentage_of_intersecting_rays = num_of_intersecting_rays / (self.num_of_shadow_ray ** 2)
         return np.array([(1 - self.light_list[i].shadow_intensity) + self.light_list[i].shadow_intensity * percentage_of_intersecting_rays[i] for i in range(len(self.light_list))])
 
@@ -161,41 +166,73 @@ class RayTracer:
         lights = self.light_list
         n = len(lights)
         directions = np.array([intersection_points - lights[i].position for i in range(n)])
-        right = np.zeros((n, intersection_points.shape[0], intersection_points.shape[1], 3))
+        right = np.zeros((n, intersection_points.shape[0], 3))
         
         for vector in [np.array([1, 0, 0]), np.array([0, 1, 0]), np.array([0, 0, 1])]:
             temp = np.cross(vector, directions)
-            right = np.where(np.repeat(np.sum(temp**2, axis=3) == 0, 3).reshape(right.shape), right, temp)
-        right /= (np.sum(right**2, axis=3)**0.5)[:,:,:,np.newaxis]
+            right = np.where(np.repeat(np.sum(temp**2, axis=2) == 0, 3).reshape(right.shape), right, temp)
+        right /= (np.sum(right**2, axis=2)**0.5)[:,:,np.newaxis]
         up = np.cross(directions, right)
-        up /= (np.sum(up**2, axis=3)**0.5)[:,:,:,np.newaxis]
+        up /= (np.sum(up**2, axis=2)**0.5)[:,:,np.newaxis]
         
         starting_points = np.array([lights[i].position - (right[i]+up[i]) * lights[i].light_radius/2 for i in range(n)])
         cell_size = [light.light_radius / self.num_of_shadow_ray for light in lights]
-        grids = np.zeros((n, intersection_points.shape[0], intersection_points.shape[1], self.num_of_shadow_ray ** 2, 3))
+        grids = np.zeros((n, intersection_points.shape[0], self.num_of_shadow_ray ** 2, 3))
         for i in range(n):
             right_resized = np.repeat(right[i] * cell_size[i], self.num_of_shadow_ray ** 2, axis=1)\
-                            .reshape((intersection_points.shape[0], intersection_points.shape[1], self.num_of_shadow_ray**2, 3))
+                            .reshape((intersection_points.shape[0], self.num_of_shadow_ray**2, 3))
             up_resized = np.repeat(up[i] * cell_size[i], self.num_of_shadow_ray ** 2, axis=1)\
-                         .reshape((intersection_points.shape[0], intersection_points.shape[1], self.num_of_shadow_ray**2, 3))
+                         .reshape((intersection_points.shape[0], self.num_of_shadow_ray**2, 3))
             
-            grids[i, :, :] = np.tile(starting_points[i], (1,1,self.num_of_shadow_ray ** 2)).reshape((grids[i].shape))
-            grids[i] += np.tile(np.arange(self.num_of_shadow_ray), (intersection_points.shape[0], intersection_points.shape[1], self.num_of_shadow_ray))\
-                    .reshape((intersection_points.shape[0], intersection_points.shape[1] ,self.num_of_shadow_ray**2, 1)) * right_resized
-            grids[i] += np.tile(np.arange(self.num_of_shadow_ray)[:,np.newaxis], (intersection_points.shape[0], intersection_points.shape[1], self.num_of_shadow_ray))\
-                    .reshape((intersection_points.shape[0], intersection_points.shape[1] ,self.num_of_shadow_ray**2, 1)) * up_resized
+            grids[i, :] = np.tile(starting_points[i], (1,1,self.num_of_shadow_ray ** 2)).reshape((grids[i].shape))
+            grids[i] += np.tile(np.arange(self.num_of_shadow_ray), (intersection_points.shape[0], self.num_of_shadow_ray))\
+                    .reshape((intersection_points.shape[0], self.num_of_shadow_ray**2, 1)) * right_resized
+            grids[i] += np.tile(np.arange(self.num_of_shadow_ray)[:,np.newaxis], (intersection_points.shape[0], self.num_of_shadow_ray))\
+                    .reshape((intersection_points.shape[0] ,self.num_of_shadow_ray**2, 1)) * up_resized
             
-            random_grid = np.random.uniform(low=0, high=cell_size[i], size=(intersection_points.shape[0], intersection_points.shape[1], self.num_of_shadow_ray, self.num_of_shadow_ray, 3))
-            random_grid[:, :, :, :, 0] = 0
+            random_grid = np.random.uniform(low=0, high=cell_size[i], size=(intersection_points.shape[0], self.num_of_shadow_ray, self.num_of_shadow_ray, 3))
+            random_grid[:, :, :, 0] = 0
             grids[i] += random_grid.reshape(grids[i].shape)
-        return grids.reshape((n, intersection_points.shape[0], intersection_points.shape[1], self.num_of_shadow_ray**2, 3))
+        return grids.reshape((n, intersection_points.shape[0], self.num_of_shadow_ray**2, 3))
 
+
+    def get_reflection_color(self, intersection_points, directions, normals, transparencies, reflections, num_of_recursion):
+        print(f"reflection {num_of_recursion}")
+        if num_of_recursion == 0:
+            return np.zeros_like(reflections)
+        reflection_direction = directions - 2 * np.sum(normals * directions, axis=1).reshape(
+            (directions.shape[0], 1)) * normals
+        starting_point = intersection_points + reflection_direction * RayTracer.epsilon
+        intersection = self.intersect_vectors_with_scene(starting_point, reflection_direction)
+        color_array = self.get_color(intersection[0], intersection[1], intersection[2],
+                                     reflection_direction[intersection[3]], \
+                                     np.copy(transparencies[intersection[3]]),
+                                     np.copy(reflections[intersection[3]]), num_of_recursion - 1)
+        reflections[intersection[3]] *= color_array
+        return reflections
+        # valid = np.linalg.norm(reflections, axis=1) > 0.01
+        # if np.sum(valid) == 0:
+        #     return np.zeros_like(reflections)
+        # reflection_direction = directions - 2 * np.sum(normals * directions, axis=1).reshape((directions.shape[0],1)) * normals
+        # starting_point = intersection_points + reflection_direction * RayTracer.epsilon
+        # intersection = self.intersect_vectors_with_scene(starting_point[valid], reflection_direction[valid])
+        # color_array = self.get_color(intersection[0], intersection[1], intersection[2], reflection_direction[valid][intersection[3]],\
+        #                              np.copy(transparencies[valid][intersection[3]]), np.copy(reflections[valid][intersection[3]]), num_of_recursion-1)
+        # reflections[valid][intersection[3]] *= color_array
+        # return reflections
     
-    def get_background_color(self):
-        return self.background_color
+    def get_background_color(self, starting_points, directions, transparencies, reflections):
+        background_color_array = np.full_like(starting_points, self.background_color, dtype=np.float64)
+        valid = transparencies > 0.01
+        if np.sum(valid) == 0:
+            return background_color_array
+        intersection = self.intersect_vectors_with_scene(starting_points[valid], directions[valid])
+        color_array = self.get_color(intersection[0], intersection[1], intersection[2], directions[valid][intersection[3]],\
+                                     np.copy(transparencies[valid][intersection[3]]), np.copy(reflections[valid][intersection[3]]),0)
+        background_color_array[valid][intersection[3]] = color_array
+        return background_color_array
 
     def intersect_vectors_with_scene(self, start_points, directions):
-        shape = start_points.shape
         start_points = start_points.ravel().reshape((start_points.size//3, 3))
         directions = directions.ravel().reshape((directions.size//3, 3))
         min_t = np.full(start_points.shape[0], np.inf)
@@ -208,12 +245,8 @@ class RayTracer:
             min_normal = np.where(np.repeat(is_intersecting, 3).reshape(min_normal.shape), N, min_normal)
             minimum_intersecting_surface = np.where(is_intersecting, surface, minimum_intersecting_surface)
         P = start_points + min_t[:,np.newaxis] * directions
-        start_points = start_points.reshape(shape)
-        directions = directions.reshape(shape)
-        min_normal = min_normal.reshape(shape)
-        minimum_intersecting_surface = minimum_intersecting_surface.reshape(shape[:-1])
-        P = P.reshape(shape)
-        return P, min_normal, minimum_intersecting_surface, ((min_t < np.inf) * (min_t > 0)).reshape(shape[:-1])
+        valid = (min_t < np.inf)
+        return P[valid], min_normal[valid], minimum_intersecting_surface[valid], valid
 
     def _get_random_grid(self, low, high):
         random_grid = np.random.uniform(low=low, high=high, size=(self.num_of_shadow_ray, self.num_of_shadow_ray, 3))
