@@ -43,13 +43,20 @@ class Cube:
             for sign in [-1,1]:
                 t = (self.center[dim] - start_points[:,dim] + sign*self.edge_length/2)/denominators
                 P = start_points + t[:,np.newaxis]*directions
-                is_minimal = (P[:,0] >= self.center[0] - self.edge_length/2) *\
-                             (P[:,0] <= self.center[0] + self.edge_length/2) *\
-                             (P[:,1] >= self.center[1] - self.edge_length/2) *\
-                             (P[:,1] <= self.center[1] + self.edge_length/2) *\
-                             (P[:,2] >= self.center[2] - self.edge_length/2) *\
-                             (P[:,2] <= self.center[2] + self.edge_length/2) *\
-                             (t > 0) == 1
+                P[:,dim] = self.center[dim] + sign*self.edge_length/2
+                is_minimal = self.is_inside(P) * (t > 0) * (t < minimal_t) == 1
                 minimal_t = np.where(is_minimal, t, minimal_t)
                 normals = np.where(np.repeat(is_minimal, 3).reshape(normals.shape), sign * np.array([dim == i for i in range(3)], dtype=np.float64), normals)
+        normals = np.where(np.repeat(self.is_inside(start_points) , 3).reshape(normals.shape), -normals, normals)
         return minimal_t, normals
+
+    def is_inside(self, points):
+        return  (points[:,0] >= (self.center[0] - self.edge_length/2)) *\
+                (points[:,0] <= (self.center[0] + self.edge_length/2)) *\
+                (points[:,1] >= (self.center[1] - self.edge_length/2)) *\
+                (points[:,1] <= (self.center[1] + self.edge_length/2)) *\
+                (points[:,2] >= (self.center[2] - self.edge_length/2)) *\
+                (points[:,2] <= (self.center[2] + self.edge_length/2))
+
+        
+    
