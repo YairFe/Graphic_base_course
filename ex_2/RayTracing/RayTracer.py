@@ -185,9 +185,9 @@ class RayTracer:
         cell_size = [light.light_radius / self.num_of_shadow_ray for light in lights]
         grids = np.zeros((n, intersection_points.shape[0], self.num_of_shadow_ray ** 2, 3))
         for i in range(n):
-            right_resized = np.repeat(right[i] * cell_size[i], self.num_of_shadow_ray ** 2, axis=1)\
+            right_resized = np.repeat(right[i] * cell_size[i], self.num_of_shadow_ray ** 2, axis=0)\
                             .reshape((intersection_points.shape[0], self.num_of_shadow_ray**2, 3))
-            up_resized = np.repeat(up[i] * cell_size[i], self.num_of_shadow_ray ** 2, axis=1)\
+            up_resized = np.repeat(up[i] * cell_size[i], self.num_of_shadow_ray ** 2, axis=0)\
                          .reshape((intersection_points.shape[0], self.num_of_shadow_ray**2, 3))
             
             grids[i, :] = np.tile(starting_points[i], (1,1,self.num_of_shadow_ray ** 2)).reshape((grids[i].shape))
