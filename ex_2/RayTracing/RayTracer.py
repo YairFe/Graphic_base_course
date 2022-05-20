@@ -109,7 +109,7 @@ class RayTracer:
         return camera, background_color, num_of_shadow_ray, max_recursion, material_list, light_list, surface_list
 
 
-    def get_color(self, intersection_points, normals, surfaces, directions, material_transparencies, material_reflection_colors, depth):
+    def get_color(self, intersection_points, normals, surfaces, directions, accumulated_transparencies, accumulated_reflection_colors, depth):
         """
         calculate the color of a ray at intersection_point with normal provided to the surface from surface_list
         intersection_point(ndArray) : points on surfaces
@@ -119,19 +119,21 @@ class RayTracer:
         """
         material_diffuse_colors = np.ones_like(intersection_points)
         material_specular_colors = np.ones_like(intersection_points)
+        material_reflection_colors = np.ones_like(intersection_points)
+        material_transparencies = np.ones(intersection_points.shape[0])
         material_phong = np.zeros_like(surfaces, dtype=np.float64)
         for i in range(surfaces.shape[0]):
             material = self.material_list[surfaces[i].material_index-1]
             material_diffuse_colors[i] = material.diffuse_color
             material_specular_colors[i] = material.specular_color
-            material_reflection_colors[i] *= material.reflection_color
+            material_reflection_colors[i] = material.reflection_color
             material_phong[i] = material.phong
-            material_transparencies[i] *= material.transparency
-        intersections_to_camera = self.camera.position - intersection_points
-        intersections_to_camera /= (np.sum(intersections_to_camera**2, axis=1)**0.5)[:,np.newaxis] #normalizing
+            material_transparencies[i] = material.transparency
+        accumulated_reflection_colors *= material_reflection_colors
+        accumulated_transparencies *= material_transparencies
         if depth < self.max_recursion:
             background_color = self.get_background_color(intersection_points, directions, surfaces,\
-                                                         material_transparencies, material_reflection_colors, depth)
+                                                         accumulated_transparencies, accumulated_reflection_colors, depth)
         else:
             background_color = np.full_like(intersection_points, self.background_color)
         total_diffuse_specular_colors = np.zeros_like(intersection_points)                                     
@@ -145,11 +147,11 @@ class RayTracer:
             light_reflection_directions = 2 * np.sum(light_directions*normals, axis=1)[:,np.newaxis]*normals - light_directions
             light_reflection_directions /= (np.sum(light_reflection_directions**2, axis=1)**0.5)[:,np.newaxis] #normalizing
             diffuse_colors = np.sum(normals*light_directions, axis=1)[:,np.newaxis] * material_diffuse_colors
-            specular_colors = (np.sum(light_reflection_directions*intersections_to_camera, axis=1) ** material_phong)[:,np.newaxis] * material_specular_colors * light.specular_intensity
+            specular_colors = (np.sum(light_reflection_directions*directions, axis=1) ** material_phong)[:,np.newaxis] * material_specular_colors * light.specular_intensity
             total_diffuse_specular_colors += light_intensities[i,:,np.newaxis] * np.full_like(intersection_points, light.color) * (diffuse_colors + specular_colors)
         if depth < self.max_recursion:
-            material_reflection_colors = self.get_reflection_color(intersection_points, directions, normals,\
-                                                         material_transparencies, material_reflection_colors, depth)
+            material_reflection_colors *= self.get_reflection_color(intersection_points, directions, normals,\
+                                                         accumulated_transparencies, accumulated_reflection_colors, depth)
         else:
             material_reflection_colors = np.zeros_like(intersection_points)
         return np.clip(material_reflection_colors + material_transparencies[:,np.newaxis] * background_color + (1-material_transparencies)[:,np.newaxis] * total_diffuse_specular_colors, 0, 1)
@@ -208,13 +210,14 @@ class RayTracer:
         if np.sum(valid) == 0:
             return np.zeros_like(reflections)
         reflection_direction = directions - 2 * np.sum(normals * directions, axis=1).reshape((directions.shape[0],1)) * normals
+        reflection_direction /= (np.sum(reflection_direction**2, axis=1)**0.5)[:,np.newaxis]
         starting_point = intersection_points + reflection_direction * RayTracer.epsilon
         intersection = self.intersect_vectors_with_scene(starting_point[valid], reflection_direction[valid])
         color_array = self.get_color(intersection[0], intersection[1], intersection[2], reflection_direction[valid][intersection[3]],\
                                      transparencies[valid][intersection[3]], reflections[valid][intersection[3]], depth+1)
-        reflections[np.flatnonzero(valid)[intersection[3]]] *= color_array
-        reflections[np.flatnonzero(valid)[np.logical_not(intersection[3])]] *= self.background_color
-        return reflections
+        result = np.full_like(reflections, self.background_color)
+        result[np.flatnonzero(valid)[intersection[3]]] = color_array
+        return result
 
     def get_background_color(self, starting_points, directions, surfaces, transparencies, reflections, depth):
         print(f"background {depth}")
